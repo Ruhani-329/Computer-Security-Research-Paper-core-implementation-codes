@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XAI DDoS Detection Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            background-color: #0F1A3F; /* Deep Navy Blue */
+            color: #DDE1E8; /* Metallic Silver */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .header {
+            border-bottom: 3px solid #DDE1E8;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+        }
+        .card {
+            background-color: #162654;
+            border: 1px solid #DDE1E8;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        .large-card {
+            grid-column: span 2;
+            background-color: #162654;
+            border: 1px solid #DDE1E8;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .status-badge {
+            font-size: 24px;
+            font-weight: bold;
+            padding: 10px;
+            border-radius: 5px;
+            display: inline-block;
+            width: 80%;
+        }
+        .safe { background-color: #2e7d32; color: white; }
+        .critical { background-color: #c62828; color: white; animation: blink 1.5s infinite; }
+        @keyframes blink { 0% {opacity: 1;} 50% {opacity: 0.4;} 100% {opacity: 1;} }
+        h3 { margin-top: 0; color: #DDE1E8; font-weight: 500;}
+        .value { font-size: 28px; font-weight: bold; color: #ffffff; margin: 10px 0;}
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h2>INTELLIGENT HYBRID IDS & EXPLAINABLE AI (XAI) ENGINE</h2>
+        <div style="text-align: right;">
+            <small>Dataset Reference: CIC-DDoS2019</small><br>
+            <strong>Status: Live Monitoring Active</strong>
+        </div>
+    </div>
+
+    <div class="grid-container">
+        <div class="card">
+            <h3>SYSTEM SECURITY STATUS</h3>
+            <div id="statusBox" class="status-badge safe">SAFE</div>
+            <p style="margin-top:10px;">Primary Trigger: <br><span id="primaryTrigger" style="font-weight:bold; color:#ffeb3b;">None</span></p>
+        </div>
+
+        <div class="card">
+            <h3>PACKET FLOW RATE</h3>
+            <div class="value" id="ppsVal">0.00</div>
+            <small>Packets / Second</small>
+        </div>
+        <div class="card">
+            <h3>DATA BANDWIDTH</h3>
+            <div class="value" id="bpsVal">0.00</div>
+            <small>Bytes / Second</small>
+        </div>
+        <div class="card">
+            <h3>SESSION TOTAL PACKETS</h3>
+            <div class="value" id="totalPackets">0</div>
+            <small>Fwd: <span id="fwdVal">0</span> | Bwd: <span id="bwdVal">0</span></small>
+        </div>
+
+        <div class="large-card">
+            <h3>Real-Time Traffic Volumetric Curve (Packets/s)</h3>
+            <canvas id="ppsChart" height="120"></canvas>
+        </div>
+
+        <div class="large-card">
+            <h3>Explainable AI (XAI) Feature Attribution - SHAP Scores</h3>
+            <canvas id="shapChart" height="120"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Charts
+        const ctxPps = document.getElementById('ppsChart').getContext('2d');
+        const ppsChart = new Chart(ctxPps, {
+            type: 'line',
+            data: { labels: [], datasets: [{ label: 'Packets/s', data: [], borderColor: '#DDE1E8', backgroundColor: 'rgba(221,225,232,0.1)', fill: true }] },
+            options: { scales: { y: { beginAtZero: true, grid: { color: '#1f3573' } } } }
+        });
+
+        const ctxShap = document.getElementById('shapChart').getContext('2d');
+        const shapChart = new Chart(ctxShap, {
+            type: 'bar',
+            data: {
+                labels: ['Flow Duration', 'Total Fwd Packets', 'Total Backward Packets', 'Total Length of Fwd Packets', 'Flow Bytes/s', 'Flow Packets/s'],
+                datasets: [{ label: 'SHAP Value (Decision Contribution Influence)', data: [0,0,0,0,0,0], backgroundColor: '#ff9800' }]
+            },
+            options: { indexAxis: 'y', scales: { x: { grid: { color: '#1f3573' } } } }
+        });
+
+        // Async Data Pipeline polling function
+        async function updateDashboard() {
+            try {
+                const response = await fetch('/api/metrics');
+                const data = await response.json();
+                
+                if (data.error || data.status === "WAITING") return;
+
+                // Update Widgets
+                const statusBox = document.getElementById('statusBox');
+                statusBox.innerText = data.status;
+                if(data.status === "CRITICAL") {
+                    statusBox.className = "status-badge critical";
+                } else {
+                    statusBox.className = "status-badge safe";
+                }
+
+                document.getElementById('ppsVal').innerText = data.packets_per_sec;
+                document.getElementById('bpsVal').innerText = data.bytes_per_sec.toLocaleString();
+                document.getElementById('totalPackets').innerText = data.total_packets;
+                document.getElementById('fwdVal').innerText = data.fwd_packets;
+                document.getElementById('bwdVal').innerText = data.bwd_packets;
+                document.getElementById('primaryTrigger').innerText = data.primary_trigger;
+
+                // Update Line Chart
+                if (ppsChart.data.labels.length > 10) {
+                    ppsChart.data.labels.shift();
+                    ppsChart.data.datasets[0].data.shift();
+                }
+                ppsChart.data.labels.push(data.timestamp);
+                ppsChart.data.datasets[0].data.push(data.packets_per_sec);
+                ppsChart.update();
+
+                // Update SHAP Chart
+                if (data.shap_values && Object.keys(data.shap_values).length > 0) {
+                    const updatedScores = [
+                        data.shap_values['Flow Duration'] || 0,
+                        data.shap_values['Total Fwd Packets'] || 0,
+                        data.shap_values['Total Backward Packets'] || 0,
+                        data.shap_values['Total Length of Fwd Packets'] || 0,
+                        data.shap_values['Flow Bytes/s'] || 0,
+                        data.shap_values['Flow Packets/s'] || 0
+                    ];
+                    shapChart.data.datasets[0].data = updatedScores;
+                    
+                    // Style positive vs negative bars dynamically
+                    shapChart.data.datasets[0].backgroundColor = updatedScores.map(v => v >= 0 ? '#ff5722' : '#00bcd4');
+                    shapChart.update();
+                }
+
+            } catch (err) {
+                console.log("Polling error: ", err);
+            }
+        }
+
+        setInterval(updateDashboard, 3000); // Poll API every 3 seconds for continuous injection tracking
+    </script>
+</body>
+</html>
